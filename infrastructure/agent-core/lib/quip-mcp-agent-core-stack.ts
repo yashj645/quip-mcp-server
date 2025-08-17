@@ -33,6 +33,33 @@ export interface QuipMcpAgentCoreStackProps extends cdk.StackProps {
    * Must be a complete ARN in format: arn:aws:secretsmanager:region:account:secret:name
    */
   readonly secretARN: string;
+
+  /**
+   * Optional JWT authorization configuration for inbound authentication
+   * When specified, enables JWT Bearer Token authentication instead of default IAM SigV4
+   * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html
+   */
+  readonly jwtAuthConfig?: {
+    /**
+     * OpenID Connect discovery URL for JWT validation
+     * Must match pattern: ^.+/\.well-known/openid-configuration$
+     * @example "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_poolid/.well-known/openid-configuration"
+     */
+    readonly discoveryUrl: string;
+    
+    /**
+     * List of allowed audiences that will be validated against the 'aud' claim in the JWT token
+     * @example ["my-app-audience"]
+     */
+    readonly allowedAudiences?: string[];
+    
+    /**
+     * List of allowed client identifiers that will be validated against the 'client_id' claim in the JWT token
+     * Required for JWT authentication
+     * @example ["cognito-client-id-123"]
+     */
+    readonly allowedClients: string[];
+  };
 }
 
 export class QuipMcpAgentCoreStack extends cdk.Stack {
@@ -403,6 +430,17 @@ export class QuipMcpAgentCoreStack extends cdk.Stack {
     };
     
     const commonRoleArn = this.agentRole.roleArn;
+
+    // Optional JWT authorization configuration
+    const authorizerConfiguration = props.jwtAuthConfig ? {
+      customJWTAuthorizer: {
+        discoveryUrl: props.jwtAuthConfig.discoveryUrl,
+        allowedClients: props.jwtAuthConfig.allowedClients,
+        ...(props.jwtAuthConfig.allowedAudiences && {
+          allowedAudiences: props.jwtAuthConfig.allowedAudiences,
+        }),
+      },
+    } : undefined;
     
     // Base environment variables (common to both create and update)
     const baseEnvironmentVariables = {
@@ -443,6 +481,7 @@ export class QuipMcpAgentCoreStack extends cdk.Stack {
           environmentVariables: {
             ...baseEnvironmentVariables,
           },
+          ...(authorizerConfiguration && { authorizerConfiguration }),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('agentRuntimeId'),
       },
@@ -459,6 +498,7 @@ export class QuipMcpAgentCoreStack extends cdk.Stack {
           environmentVariables: {
             ...baseEnvironmentVariables,
           },
+          ...(authorizerConfiguration && { authorizerConfiguration }),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('agentRuntimeId'),
       },
@@ -522,5 +562,35 @@ export class QuipMcpAgentCoreStack extends cdk.Stack {
       description: 'MCP Invocation endpoint URL for the deployed agent',
       exportName: `${this.stackName}-McpEndpoint`,
     });
+
+    // JWT Authorization configuration outputs
+    if (props.jwtAuthConfig) {
+      new cdk.CfnOutput(this, 'AuthorizationType', {
+        value: 'JWT Bearer Token',
+        description: 'Agent runtime uses JWT Bearer Token authentication',
+      });
+
+      new cdk.CfnOutput(this, 'JWTDiscoveryUrl', {
+        value: props.jwtAuthConfig.discoveryUrl,
+        description: 'OpenID Connect discovery URL for JWT validation',
+      });
+
+      new cdk.CfnOutput(this, 'AllowedClients', {
+        value: props.jwtAuthConfig.allowedClients.join(', '),
+        description: 'Allowed client identifiers for JWT authentication',
+      });
+
+      if (props.jwtAuthConfig.allowedAudiences) {
+        new cdk.CfnOutput(this, 'AllowedAudiences', {
+          value: props.jwtAuthConfig.allowedAudiences.join(', '),
+          description: 'Allowed audiences for JWT token validation',
+        });
+      }
+    } else {
+      new cdk.CfnOutput(this, 'AuthorizationType', {
+        value: 'IAM SigV4 (Default)',
+        description: 'Agent runtime uses default IAM SigV4 authentication',
+      });
+    }
   }
 }

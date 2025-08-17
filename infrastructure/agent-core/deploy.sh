@@ -5,14 +5,17 @@
 # Usage: ./deploy.sh [options]
 #
 # Options:
-#   --agent-name <name>     Agent runtime name (default: quip_mcp_server)
-#   --s3-bucket <bucket>    Existing S3 bucket name (optional, will create new if not specified)
-#   --secret-arn <arn>      Secrets Manager secret ARN (required)
-#   --region <region>       AWS region (default: us-west-2)
-#   --profile <profile>     AWS profile to use (optional)
-#   --skip-build           Skip npm install and build steps
-#   --dry-run              Show what would be deployed without actually deploying
-#   --help                 Show this help message
+#   --agent-name <name>         Agent runtime name (default: quip_mcp_server)
+#   --s3-bucket <bucket>        Existing S3 bucket name (optional, will create new if not specified)
+#   --secret-arn <arn>          Secrets Manager secret ARN (required)
+#   --region <region>           AWS region (default: us-west-2)
+#   --profile <profile>         AWS profile to use (optional)
+#   --jwt-discovery-url <url>   OpenID Connect discovery URL for JWT authentication (optional)
+#   --jwt-allowed-clients <ids> Comma-separated list of allowed client IDs for JWT authentication (optional)
+#   --jwt-allowed-audiences <auds> Comma-separated list of allowed audiences for JWT authentication (optional)
+#   --skip-build               Skip npm install and build steps
+#   --dry-run                  Show what would be deployed without actually deploying
+#   --help                     Show this help message
 
 set -e
 
@@ -24,6 +27,9 @@ SKIP_BUILD=false
 DRY_RUN=false
 S3_BUCKET=""
 AWS_PROFILE=""
+JWT_DISCOVERY_URL=""
+JWT_ALLOWED_CLIENTS=""
+JWT_ALLOWED_AUDIENCES=""
 
 # Color codes for output
 RED='\033[0;31m'
@@ -57,20 +63,33 @@ Deployment script for Quip MCP Server Agent Core Runtime
 Usage: $0 [options]
 
 Options:
-  --agent-name <name>     Agent runtime name (default: quip_mcp_server)
-  --s3-bucket <bucket>    Existing S3 bucket name (optional, will create new if not specified)
-  --secret-arn <arn>      Secrets Manager secret ARN (required)
-  --region <region>       AWS region (default: us-west-2)
-  --profile <profile>     AWS profile to use (optional)
-  --skip-build           Skip npm install and build steps
-  --dry-run              Show what would be deployed without actually deploying
-  --help                 Show this help message
+  --agent-name <name>         Agent runtime name (default: quip_mcp_server)
+  --s3-bucket <bucket>        Existing S3 bucket name (optional, will create new if not specified)
+  --secret-arn <arn>          Secrets Manager secret ARN (required)
+  --region <region>           AWS region (default: us-west-2)
+  --profile <profile>         AWS profile to use (optional)
+  --jwt-discovery-url <url>   OpenID Connect discovery URL for JWT authentication (optional)
+  --jwt-allowed-clients <ids> Comma-separated list of allowed client IDs for JWT authentication (optional)
+  --jwt-allowed-audiences <auds> Comma-separated list of allowed audiences for JWT authentication (optional)
+  --skip-build               Skip npm install and build steps
+  --dry-run                  Show what would be deployed without actually deploying
+  --help                     Show this help message
 
 Examples:
-  $0                                          # Deploy with defaults
-  $0 --agent-name my-agent --region us-east-1 # Deploy with custom name and region
-  $0 --dry-run                                # Preview deployment
-  $0 --s3-bucket existing-bucket              # Use existing S3 bucket
+  # Deploy with default IAM authentication
+  $0 --secret-arn arn:aws:secretsmanager:us-west-2:123456789012:secret:quip-mcp/secrets-AbCdEf
+  
+  # Deploy with JWT authentication using AWS Cognito
+  $0 --secret-arn arn:aws:secretsmanager:us-west-2:123456789012:secret:quip-mcp/secrets-AbCdEf \\
+     --jwt-discovery-url https://cognito-idp.us-west-2.amazonaws.com/us-west-2_poolid/.well-known/openid-configuration \\
+     --jwt-allowed-clients client-id-123,client-id-456 \\
+     --jwt-allowed-audiences my-app-audience
+  
+  # Deploy with custom settings
+  $0 --agent-name my-agent --region us-east-1 --s3-bucket existing-bucket
+  
+  # Preview deployment without actually deploying
+  $0 --dry-run --secret-arn arn:aws:secretsmanager:us-west-2:123456789012:secret:quip-mcp/secrets-AbCdEf
 
 Prerequisites:
   - AWS CLI configured with appropriate permissions
@@ -102,6 +121,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --profile)
             AWS_PROFILE="$2"
+            shift 2
+            ;;
+        --jwt-discovery-url)
+            JWT_DISCOVERY_URL="$2"
+            shift 2
+            ;;
+        --jwt-allowed-clients)
+            JWT_ALLOWED_CLIENTS="$2"
+            shift 2
+            ;;
+        --jwt-allowed-audiences)
+            JWT_ALLOWED_AUDIENCES="$2"
             shift 2
             ;;
         --skip-build)
@@ -146,7 +177,49 @@ fi
 if [[ -n "$AWS_PROFILE" ]]; then
     echo "  AWS Profile: $AWS_PROFILE"
 fi
+
+# Display JWT configuration if provided
+if [[ -n "$JWT_DISCOVERY_URL" ]]; then
+    echo "  Authentication: JWT Bearer Token"
+    echo "  JWT Discovery URL: $JWT_DISCOVERY_URL"
+    echo "  JWT Allowed Clients: $JWT_ALLOWED_CLIENTS"
+    if [[ -n "$JWT_ALLOWED_AUDIENCES" ]]; then
+        echo "  JWT Allowed Audiences: $JWT_ALLOWED_AUDIENCES"
+    fi
+else
+    echo "  Authentication: IAM SigV4 (Default)"
+fi
 echo
+
+# Validate JWT parameters if any are provided (before checking prerequisites)
+if [[ -n "$JWT_DISCOVERY_URL" ]] || [[ -n "$JWT_ALLOWED_CLIENTS" ]]; then
+    print_status "Validating JWT authentication parameters..."
+    
+    # If JWT parameters are partially provided, validate completeness
+    if [[ -z "$JWT_DISCOVERY_URL" ]]; then
+        print_error "JWT Discovery URL is required when configuring JWT authentication."
+        echo "Please provide --jwt-discovery-url parameter."
+        echo "Example: --jwt-discovery-url https://cognito-idp.us-west-2.amazonaws.com/us-west-2_poolid/.well-known/openid-configuration"
+        exit 1
+    fi
+    
+    if [[ -z "$JWT_ALLOWED_CLIENTS" ]]; then
+        print_error "JWT Allowed Clients is required when configuring JWT authentication."
+        echo "Please provide --jwt-allowed-clients parameter with comma-separated client IDs."
+        echo "Example: --jwt-allowed-clients client-id-123,client-id-456"
+        exit 1
+    fi
+    
+    # Validate discovery URL format
+    if [[ ! "$JWT_DISCOVERY_URL" =~ ^.+/\.well-known/openid-configuration$ ]]; then
+        print_error "JWT Discovery URL must end with '/.well-known/openid-configuration'"
+        echo "Provided: $JWT_DISCOVERY_URL"
+        echo "Example: https://cognito-idp.us-west-2.amazonaws.com/us-west-2_poolid/.well-known/openid-configuration"
+        exit 1
+    fi
+    
+    print_success "JWT authentication parameters validated."
+fi
 
 # Check prerequisites
 print_status "Checking prerequisites..."
@@ -270,6 +343,16 @@ if [[ -n "$S3_BUCKET" ]]; then
     CDK_CMD="$CDK_CMD --context s3BucketName=$S3_BUCKET"
 fi
 
+# Add JWT authentication parameters if provided
+if [[ -n "$JWT_DISCOVERY_URL" ]]; then
+    CDK_CMD="$CDK_CMD --context jwtDiscoveryUrl=$JWT_DISCOVERY_URL"
+    CDK_CMD="$CDK_CMD --context jwtAllowedClients=$JWT_ALLOWED_CLIENTS"
+    
+    if [[ -n "$JWT_ALLOWED_AUDIENCES" ]]; then
+        CDK_CMD="$CDK_CMD --context jwtAllowedAudiences=$JWT_ALLOWED_AUDIENCES"
+    fi
+fi
+
 # Add deployment parameters
 if [[ "$DRY_RUN" == false ]]; then
     CDK_CMD="$CDK_CMD --require-approval never"
@@ -292,11 +375,26 @@ if [[ $? -eq 0 ]]; then
         echo "  Agent Runtime Name: $AGENT_NAME"
         echo "  Region: $REGION"
         echo "  Secret ARN: $SECRET_ARN"
+        if [[ -n "$JWT_DISCOVERY_URL" ]]; then
+            echo "  Authentication: JWT Bearer Token"
+            echo "  JWT Discovery URL: $JWT_DISCOVERY_URL"
+            echo "  JWT Allowed Clients: $JWT_ALLOWED_CLIENTS"
+            if [[ -n "$JWT_ALLOWED_AUDIENCES" ]]; then
+                echo "  JWT Allowed Audiences: $JWT_ALLOWED_AUDIENCES"
+            fi
+        else
+            echo "  Authentication: IAM SigV4 (Default)"
+        fi
         echo
         print_status "Next Steps:"
         echo "1. Note the AgentRuntimeArn from the outputs above"
-        echo "2. Set up OAuth authentication (if not already done)"
-        echo "3. Test the deployment using the MCP client or inspector"
+        if [[ -n "$JWT_DISCOVERY_URL" ]]; then
+            echo "2. Obtain JWT tokens from your OAuth provider (${JWT_DISCOVERY_URL%/.well-known/openid-configuration})"
+            echo "3. Test the deployment using JWT Bearer tokens with the MCP client"
+        else
+            echo "2. Configure AWS credentials for IAM SigV4 authentication"
+            echo "3. Test the deployment using the MCP client with AWS signed requests"
+        fi
         echo "4. Monitor logs in CloudWatch"
         echo
         print_status "Useful Commands:"

@@ -82,14 +82,22 @@ npx cdk bootstrap
 ### 3. Deploy the Stack
 
 ```bash
-# Deploy with default settings
+# Deploy with default settings (IAM SigV4 authentication)
 npx cdk deploy
 
-# Or deploy with custom parameters
+# Deploy with custom parameters
 npx cdk deploy \
   --context agentRuntimeName=my_quip_mcp_server \
   --context s3BucketName=my-existing-bucket \
   --context secretARN=arn:aws:secretsmanager:region:account:secret:name
+
+# Deploy with JWT Bearer Token authentication (requires Cognito or similar OAuth provider)
+npx cdk deploy \
+  --context agentRuntimeName=my_quip_mcp_server \
+  --context secretARN=arn:aws:secretsmanager:region:account:secret:name \
+  --context jwtDiscoveryUrl=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_poolid/.well-known/openid-configuration \
+  --context jwtAllowedClients=client-id-123,client-id-456 \
+  --context jwtAllowedAudiences=my-app-audience
 ```
 
 **Required Parameter:**
@@ -99,6 +107,13 @@ npx cdk deploy \
 - `agentRuntimeName`: Name for the Agent Core Runtime (default: 'quip_mcp_server', pattern: a-zA-Z0-9_)
 - `s3BucketName`: Existing S3 bucket name (creates new if not specified)
 - `s3Prefix`: S3 key prefix for data storage (default: 'quip-data/')
+
+**JWT Authorization Parameters (Optional):**
+- `jwtDiscoveryUrl`: OpenID Connect discovery URL for JWT validation (must match pattern: `^.+/\.well-known/openid-configuration$`)
+- `jwtAllowedClients`: Comma-separated list or array of allowed client identifiers for JWT authentication
+- `jwtAllowedAudiences`: Comma-separated list or array of allowed audiences for JWT token validation (optional)
+
+When JWT parameters are provided, the Agent Runtime will use JWT Bearer Token authentication instead of the default IAM SigV4 authentication.
 
 ### 4. Verify Deployment
 
@@ -149,15 +164,130 @@ The following environment variables are automatically configured:
 - `MCP_API_KEY`: Extracted from secret (if available)
 - `QUIP_BASE_URL`: Extracted from secret (if available)
 
+## Authentication Methods
+
+The Agent Core Runtime supports two authentication methods:
+
+### 1. AWS IAM Authentication (Default)
+
+Default authentication method using AWS IAM SigV4 signing.
+
+### 2. JWT Bearer Token Authentication (Optional)
+
+When JWT configuration is provided, the runtime accepts JWT bearer tokens for authentication. This is useful for integrating with OAuth providers like AWS Cognito, Auth0, or other OpenID Connect compliant services.
+
+**Benefits of JWT Authentication:**
+- User-specific authentication contexts
+- Support for OAuth flows (Authorization Code Grant)
+- Integration with existing identity providers
+- User session management
+
+**Requirements:**
+- OpenID Connect compliant identity provider
+- Discovery URL ending with `/.well-known/openid-configuration`
+- Valid client identifiers
+- Properly signed JWT tokens with required claims
+
+## Setting Up JWT Authentication
+
+### Prerequisites
+
+1. **OAuth Provider Setup**: Configure an OAuth provider (e.g., AWS Cognito)
+2. **User Pool**: Create users in your OAuth provider
+3. **Client Configuration**: Register client applications
+
+### Example: AWS Cognito Setup
+
+```bash
+#!/bin/bash
+
+# Create Cognito User Pool
+export POOL_ID=$(aws cognito-idp create-user-pool \
+  --pool-name "QuipMcpUserPool" \
+  --policies '{"PasswordPolicy":{"MinimumLength":8}}' \
+  --region us-east-1 | jq -r '.UserPool.Id')
+
+# Create App Client
+export CLIENT_ID=$(aws cognito-idp create-user-pool-client \
+  --user-pool-id $POOL_ID \
+  --client-name "QuipMcpClient" \
+  --no-generate-secret \
+  --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" \
+  --region us-east-1 | jq -r '.UserPoolClient.ClientId')
+
+# Create Test User
+aws cognito-idp admin-create-user \
+  --user-pool-id $POOL_ID \
+  --username "testuser" \
+  --temporary-password "TempPass123!" \
+  --region us-east-1 \
+  --message-action SUPPRESS
+
+# Set Permanent Password
+aws cognito-idp admin-set-user-password \
+  --user-pool-id $POOL_ID \
+  --username "testuser" \
+  --password "MySecurePass123!" \
+  --region us-east-1 \
+  --permanent
+
+echo "Discovery URL: https://cognito-idp.us-east-1.amazonaws.com/$POOL_ID/.well-known/openid-configuration"
+echo "Client ID: $CLIENT_ID"
+```
+
+### Deploy with JWT Configuration
+
+```bash
+npx cdk deploy \
+  --context secretARN=arn:aws:secretsmanager:region:account:secret:name \
+  --context jwtDiscoveryUrl=https://cognito-idp.us-east-1.amazonaws.com/$POOL_ID/.well-known/openid-configuration \
+  --context jwtAllowedClients=$CLIENT_ID
+```
+
 ## Testing the Deployment
 
 ### AWS IAM Authentication
 
-The deployed MCP server uses AWS IAM authentication. You'll need to:
+When using the default IAM authentication, you'll need to:
 
 1. **Configure AWS Credentials**: Ensure your AWS CLI or SDK is configured with appropriate permissions
 2. **Use AWS Signature Version 4**: All requests must be signed using AWS SigV4
 3. **Access via AWS SDK**: Use AWS Bedrock Agent Runtime SDK or direct HTTP calls with proper signing
+
+### JWT Bearer Token Authentication
+
+When using JWT authentication, you'll need to:
+
+1. **Obtain JWT Token**: Get a valid JWT token from your OAuth provider
+2. **Include Authorization Header**: Add `Authorization: Bearer <token>` to requests
+3. **Verify Token Claims**: Ensure token contains required `aud` and `client_id` claims
+
+#### Testing with JWT Token
+
+```bash
+# Get JWT token from Cognito
+export TOKEN=$(aws cognito-idp initiate-auth \
+  --client-id "$CLIENT_ID" \
+  --auth-flow USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME='testuser',PASSWORD='MySecurePass123!' \
+  --region us-east-1 | jq -r '.AuthenticationResult.AccessToken')
+
+# Test MCP endpoint with JWT token
+curl -X POST "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/${ENCODED_AGENT_ARN}/invocations?qualifier=DEFAULT" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -H "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: test-session-123" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+#### JWT Token Requirements
+
+The JWT token must include:
+- **iss** (issuer): Must match the configured discovery URL domain
+- **aud** (audience): Must be in the allowed audiences list (if specified)
+- **client_id**: Must be in the allowed clients list
+- **exp** (expiration): Token must not be expired
+- Valid signature from the OAuth provider
 
 ### Using AWS CLI to Test
 
@@ -189,9 +319,12 @@ npx @modelcontextprotocol/inspector
 | `AgentRuntimeArn` | ARN of the created Agent Core Runtime |
 | `AgentRuntimeId` | ID of the Agent Core Runtime |
 | `McpInvocationEndpoint` | Complete URL for MCP client connections |
-| `EcrRepositoryUri` | ECR repository URI for the container image |
 | `S3BucketName` | Name of the S3 bucket for data storage |
 | `AgentCoreRoleArn` | ARN of the IAM execution role |
+| `AuthorizationType` | Authentication method (IAM SigV4 or JWT Bearer Token) |
+| `JWTDiscoveryUrl` | OpenID Connect discovery URL (JWT mode only) |
+| `AllowedClients` | Allowed client identifiers (JWT mode only) |
+| `AllowedAudiences` | Allowed audiences (JWT mode only, if specified) |
 
 ## Monitoring and Logs
 
