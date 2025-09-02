@@ -671,6 +671,8 @@ cd infrastructure/agent-core
 ./deploy.sh --agent-name my-quip-mcp --region us-west-2
 ```
 
+For a complete walkthrough of testing the AgentCore deployment, see [Invoke MCP hosted on AWS AgentCore](https://kane.mx/posts/2025/invoke-mcp-hosted-on-aws-agentcore/).
+
 ## Development
 
 ### Project Structure
