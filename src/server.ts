@@ -364,6 +364,7 @@ async function accessResource(uri: string): Promise<(TextContent | ImageContent 
   }];
 }
 
+
 /**
  * Main entry point for the Quip MCP server
  */
@@ -551,7 +552,14 @@ export async function main(): Promise<void> {
       app.post('/mcp', async (req: Request, res: Response) => {
         logger.info('Received POST MCP request');
         logger.debug('Request body:', req.body);
-        
+
+        // Fix for MCP SDK compatibility: Convert params:null to params:{}
+        // MCP SDK doesn't properly handle params:null, causing internal errors
+        if (req.body && req.body.params === null) {
+          logger.debug('Converting params:null to params:{} for SDK compatibility');
+          req.body.params = {};
+        }
+
         // Set request timeout to prevent hanging connections
         const requestTimeout = setTimeout(() => {
           if (!res.headersSent) {

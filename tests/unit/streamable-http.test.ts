@@ -338,4 +338,354 @@ describe('Streamable HTTP Mode', () => {
       id: null
     });
   });
+
+  // Test params:null to params:{} conversion
+  describe('params:null conversion', () => {
+    it('should convert params:null to params:{} for SDK compatibility', async () => {
+      // Arrange
+      const mockReq = {
+        body: {
+          jsonrpc: '2.0',
+          method: 'ping',
+          id: 1,
+          params: null  // Client sends null
+        },
+        headers: {},
+        get: jest.fn().mockReturnValue('application/json'),
+      } as unknown as Request;
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+      } as unknown as Response;
+
+      const mockTransport = {
+        handleRequest: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn(),
+      };
+
+      (StreamableHTTPServerTransport as any).mockImplementation(() => mockTransport);
+
+      const mockServer = {
+        connect: jest.fn().mockResolvedValue(undefined),
+      };
+      (Server as any).mockImplementation(() => mockServer);
+
+      // Create post handler with params:null conversion
+      const postHandler = async (req: Request, res: Response) => {
+        try {
+          // Convert params:null to params:{}
+          if (req.body && req.body.params === null) {
+            req.body.params = {};
+          }
+
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          } as any);
+
+          res.on('close', () => {
+            transport.close();
+          });
+
+          const server = new Server({
+            name: "test-server",
+            version: "1.0.0"
+          });
+          await server.connect(transport);
+
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error'
+            },
+            id: null
+          });
+        }
+      };
+
+      // Act
+      await postHandler(mockReq, mockRes);
+
+      // Assert - verify params was converted from null to {}
+      expect(mockReq.body.params).toEqual({});
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        mockReq,
+        mockRes,
+        expect.objectContaining({
+          params: {}  // Should be {} instead of null
+        })
+      );
+    });
+
+    it('should not modify params:{} when already an object', async () => {
+      // Arrange
+      const mockReq = {
+        body: {
+          jsonrpc: '2.0',
+          method: 'tools/list',
+          id: 2,
+          params: {}  // Already an object
+        },
+        headers: {},
+        get: jest.fn().mockReturnValue('application/json'),
+      } as unknown as Request;
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+      } as unknown as Response;
+
+      const mockTransport = {
+        handleRequest: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn(),
+      };
+
+      (StreamableHTTPServerTransport as any).mockImplementation(() => mockTransport);
+
+      const mockServer = {
+        connect: jest.fn().mockResolvedValue(undefined),
+      };
+      (Server as any).mockImplementation(() => mockServer);
+
+      // Create post handler with params:null conversion
+      const postHandler = async (req: Request, res: Response) => {
+        try {
+          // Convert params:null to params:{}
+          if (req.body && req.body.params === null) {
+            req.body.params = {};
+          }
+
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          } as any);
+
+          res.on('close', () => {
+            transport.close();
+          });
+
+          const server = new Server({
+            name: "test-server",
+            version: "1.0.0"
+          });
+          await server.connect(transport);
+
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error'
+            },
+            id: null
+          });
+        }
+      };
+
+      // Act
+      await postHandler(mockReq, mockRes);
+
+      // Assert - params should remain {}
+      expect(mockReq.body.params).toEqual({});
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        mockReq,
+        mockRes,
+        expect.objectContaining({
+          params: {}
+        })
+      );
+    });
+
+    it('should handle missing params field (undefined)', async () => {
+      // Arrange
+      const mockReq = {
+        body: {
+          jsonrpc: '2.0',
+          method: 'ping',
+          id: 3
+          // No params field
+        },
+        headers: {},
+        get: jest.fn().mockReturnValue('application/json'),
+      } as unknown as Request;
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+      } as unknown as Response;
+
+      const mockTransport = {
+        handleRequest: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn(),
+      };
+
+      (StreamableHTTPServerTransport as any).mockImplementation(() => mockTransport);
+
+      const mockServer = {
+        connect: jest.fn().mockResolvedValue(undefined),
+      };
+      (Server as any).mockImplementation(() => mockServer);
+
+      // Create post handler with params:null conversion
+      const postHandler = async (req: Request, res: Response) => {
+        try {
+          // Convert params:null to params:{}
+          if (req.body && req.body.params === null) {
+            req.body.params = {};
+          }
+
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          } as any);
+
+          res.on('close', () => {
+            transport.close();
+          });
+
+          const server = new Server({
+            name: "test-server",
+            version: "1.0.0"
+          });
+          await server.connect(transport);
+
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error'
+            },
+            id: null
+          });
+        }
+      };
+
+      // Act
+      await postHandler(mockReq, mockRes);
+
+      // Assert - params should remain undefined
+      expect(mockReq.body.params).toBeUndefined();
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        mockReq,
+        mockRes,
+        expect.objectContaining({
+          jsonrpc: '2.0',
+          method: 'ping',
+          id: 3
+        })
+      );
+    });
+
+    it('should not modify params when it contains actual data', async () => {
+      // Arrange
+      const mockReq = {
+        body: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          id: 4,
+          params: {
+            name: 'quip_read_spreadsheet',
+            arguments: { threadId: 'test123' }
+          }
+        },
+        headers: {},
+        get: jest.fn().mockReturnValue('application/json'),
+      } as unknown as Request;
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+      } as unknown as Response;
+
+      const mockTransport = {
+        handleRequest: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn(),
+      };
+
+      (StreamableHTTPServerTransport as any).mockImplementation(() => mockTransport);
+
+      const mockServer = {
+        connect: jest.fn().mockResolvedValue(undefined),
+      };
+      (Server as any).mockImplementation(() => mockServer);
+
+      // Create post handler with params:null conversion
+      const postHandler = async (req: Request, res: Response) => {
+        try {
+          // Convert params:null to params:{}
+          if (req.body && req.body.params === null) {
+            req.body.params = {};
+          }
+
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          } as any);
+
+          res.on('close', () => {
+            transport.close();
+          });
+
+          const server = new Server({
+            name: "test-server",
+            version: "1.0.0"
+          });
+          await server.connect(transport);
+
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error'
+            },
+            id: null
+          });
+        }
+      };
+
+      // Act
+      await postHandler(mockReq, mockRes);
+
+      // Assert - params should remain unchanged with actual data
+      expect(mockReq.body.params).toEqual({
+        name: 'quip_read_spreadsheet',
+        arguments: { threadId: 'test123' }
+      });
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        mockReq,
+        mockRes,
+        expect.objectContaining({
+          params: {
+            name: 'quip_read_spreadsheet',
+            arguments: { threadId: 'test123' }
+          }
+        })
+      );
+    });
+  });
 });

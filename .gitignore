@@ -48,3 +48,7 @@ storage/
 cdk.out/
 infrastructure/**/*.d.ts
 infrastructure/**/*.js
+
+# Claude Code
+CLAUDE.local.md
+.claude/settings.local.json
