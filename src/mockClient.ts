@@ -219,6 +219,32 @@ export class MockQuipClient {
   }
   
   /**
+   * Create a new mock document
+   */
+  async createDocument(title: string, content: string = '', format: 'html' | 'markdown' = 'markdown'): Promise<Record<string, any>> {
+    logger.info(`Creating mock document: ${title}`);
+    const threadId = `mock_${Date.now()}`;
+    this.addMockDocument({ threadId, title, type: 'document', text: content });
+    return {
+      thread: { id: threadId, title, type: 'document' },
+      html: `<html><body><h1>${title}</h1><p>${content}</p></body></html>`
+    };
+  }
+
+  /**
+   * Append content to a mock document
+   */
+  async appendToDocument(threadId: string, content: string, format: 'html' | 'markdown' = 'markdown'): Promise<Record<string, any>> {
+    logger.info(`Appending to mock document: ${threadId}`);
+    const doc = this.mockDocuments.get(threadId);
+    if (!doc) throw new Error(`Thread not found: ${threadId}`);
+    doc.text += `\n${content}`;
+    return {
+      thread: { id: threadId, title: doc.title, type: doc.type }
+    };
+  }
+
+  /**
    * Read text content from a mock document thread
    *
    * @param threadId ID of the thread to read

@@ -167,6 +167,54 @@ export class QuipClient {
   }
 
   /**
+   * Create a new Quip document
+   *
+   * @param title Title of the document
+   * @param content HTML or markdown content
+   * @param format 'html' or 'markdown' (default: 'markdown')
+   * @returns Promise resolving to created thread info
+   */
+  async createDocument(title: string, content: string = '', format: 'html' | 'markdown' = 'markdown'): Promise<Record<string, any>> {
+    logger.info(`Creating new Quip document: ${title}`);
+    try {
+      const params = new URLSearchParams({ title, content, format });
+      const response = await this.axiosInstance.post(
+        `${this.baseUrl}/1/threads/new-document`,
+        params.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      return response.data;
+    } catch (error) {
+      logger.error(`Error creating document: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Append content to an existing Quip document
+   *
+   * @param threadId ID of the thread to append to
+   * @param content HTML or markdown content to append
+   * @param format 'html' or 'markdown' (default: 'markdown')
+   * @returns Promise resolving to updated thread info
+   */
+  async appendToDocument(threadId: string, content: string, format: 'html' | 'markdown' = 'markdown'): Promise<Record<string, any>> {
+    logger.info(`Appending content to thread: ${threadId}`);
+    try {
+      const params = new URLSearchParams({ content, format, location: '0' }); // 0 = APPEND
+      const response = await this.axiosInstance.post(
+        `${this.baseUrl}/1/threads/${threadId}/append`,
+        params.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      return response.data;
+    } catch (error) {
+      logger.error(`Error appending to document: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+
+  /**
    * Read text content from a Quip document thread
    *
    * @param threadId ID of the thread to read

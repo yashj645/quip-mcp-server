@@ -41,6 +41,52 @@ import { truncateCSVContent } from './storage';
 export function getQuipTools(): Tool[] {
   return [
     {
+      name: "quip_create_document",
+      description: "Create a new Quip document with a title and content. Returns the new document's thread ID and URL.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Title of the new document"
+          },
+          content: {
+            type: "string",
+            description: "Content of the document in markdown or HTML format"
+          },
+          format: {
+            type: "string",
+            enum: ["markdown", "html"],
+            description: "Format of the content (default: markdown)"
+          }
+        },
+        required: ["title"]
+      }
+    },
+    {
+      name: "quip_append_document",
+      description: "Append content to an existing Quip document by its thread ID.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          threadId: {
+            type: "string",
+            description: "The Quip document thread ID to append to"
+          },
+          content: {
+            type: "string",
+            description: "Content to append in markdown or HTML format"
+          },
+          format: {
+            type: "string",
+            enum: ["markdown", "html"],
+            description: "Format of the content (default: markdown)"
+          }
+        },
+        required: ["threadId", "content"]
+      }
+    },
+    {
       name: "quip_read_document",
       description: "Read the text content of a regular Quip document (non-spreadsheet) by its thread ID. Returns the document title, type, and extracted plain text content.",
       inputSchema: {
@@ -73,6 +119,82 @@ export function getQuipTools(): Tool[] {
       }
     }
   ];
+}
+
+/**
+ * Handle the quip_create_document tool
+ */
+export async function handleQuipCreateDocument(
+  args: Record<string, any>,
+  useMock: boolean = false
+): Promise<(TextContent | ImageContent | EmbeddedResource)[]> {
+  const { title, content = '', format = 'markdown' } = args;
+
+  if (!title) throw new InvalidParamsError("title is required");
+
+  logger.info(`Creating document: ${title}`, { mock: useMock });
+
+  let client;
+  if (useMock) {
+    client = new MockQuipClient();
+  } else {
+    const quipToken = process.env.QUIP_TOKEN;
+    const quipBaseUrl = process.env.QUIP_BASE_URL || "https://platform.quip.com";
+    if (!quipToken) throw new QuipApiError("QUIP_TOKEN environment variable is not set");
+    client = new QuipClient(quipToken, quipBaseUrl);
+  }
+
+  try {
+    const result = await client.createDocument(title, content, format);
+    const thread = result.thread || {};
+    return [{ type: "text", text: JSON.stringify({
+      thread_id: thread.id,
+      title: thread.title,
+      type: thread.type,
+      link: thread.link
+    })}];
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new QuipApiError(`Error creating document: ${msg}`);
+  }
+}
+
+/**
+ * Handle the quip_append_document tool
+ */
+export async function handleQuipAppendDocument(
+  args: Record<string, any>,
+  useMock: boolean = false
+): Promise<(TextContent | ImageContent | EmbeddedResource)[]> {
+  const { threadId, content, format = 'markdown' } = args;
+
+  if (!threadId) throw new InvalidParamsError("threadId is required");
+  if (!content) throw new InvalidParamsError("content is required");
+
+  logger.info(`Appending to document: ${threadId}`, { mock: useMock });
+
+  let client;
+  if (useMock) {
+    client = new MockQuipClient();
+  } else {
+    const quipToken = process.env.QUIP_TOKEN;
+    const quipBaseUrl = process.env.QUIP_BASE_URL || "https://platform.quip.com";
+    if (!quipToken) throw new QuipApiError("QUIP_TOKEN environment variable is not set");
+    client = new QuipClient(quipToken, quipBaseUrl);
+  }
+
+  try {
+    const result = await client.appendToDocument(threadId, content, format);
+    const thread = result.thread || {};
+    return [{ type: "text", text: JSON.stringify({
+      success: true,
+      thread_id: thread.id,
+      title: thread.title
+    })}];
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new QuipApiError(`Error appending to document: ${msg}`);
+  }
 }
 
 /**

@@ -25,6 +25,8 @@ import {
   ImageContent,
   EmbeddedResource,
   getQuipTools,
+  handleQuipCreateDocument,
+  handleQuipAppendDocument,
   handleQuipReadDocument,
   handleQuipReadSpreadsheet
 } from './tools';
@@ -450,7 +452,21 @@ export async function main(): Promise<void> {
       logger.info(`Handling tools/call request for tool: ${request.params.name}`);
       
       try {
-        if (request.params.name === "quip_read_document") {
+        if (request.params.name === "quip_create_document") {
+          return {
+            content: await handleQuipCreateDocument(
+              request.params.arguments || {},
+              options.mock
+            )
+          };
+        } else if (request.params.name === "quip_append_document") {
+          return {
+            content: await handleQuipAppendDocument(
+              request.params.arguments || {},
+              options.mock
+            )
+          };
+        } else if (request.params.name === "quip_read_document") {
           return {
             content: await handleQuipReadDocument(
               request.params.arguments || {},
