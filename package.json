@@ -1,6 +1,6 @@
 {
   "name": "@yashj645/quip-mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for reading Quip documents and spreadsheets",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
