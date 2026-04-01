@@ -146,7 +146,7 @@ export class QuipClient {
   
   /**
    * Check if a thread is a spreadsheet
-   * 
+   *
    * @param threadId ID of the thread to check
    * @returns Promise resolving to true if the thread is a spreadsheet, false otherwise
    */
@@ -156,7 +156,7 @@ export class QuipClient {
       if (!thread || !thread.thread) {
         return false;
       }
-      
+
       // Check if the thread type is 'spreadsheet'
       const threadType = thread.thread.type?.toLowerCase() || '';
       return threadType === 'spreadsheet';
@@ -164,6 +164,35 @@ export class QuipClient {
       logger.error(`Error checking if thread is spreadsheet: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
+  }
+
+  /**
+   * Read text content from a Quip document thread
+   *
+   * @param threadId ID of the thread to read
+   * @returns Promise resolving to document title, type, plain text content, and word count
+   */
+  async getDocumentText(threadId: string): Promise<{ title: string; type: string; text_content: string; word_count: number }> {
+    const thread = await this.getThread(threadId);
+
+    if (!thread || !thread.thread) {
+      throw new Error(`Thread ${threadId} not found`);
+    }
+
+    const threadInfo = thread.thread;
+    const title = threadInfo.title || threadId;
+    const html = thread.html || '';
+
+    const $ = cheerio.load(html);
+    $('script, style').remove();
+    const text = $('body').text().replace(/\s+/g, ' ').trim();
+
+    return {
+      title,
+      type: threadInfo.type || 'document',
+      text_content: text,
+      word_count: text.split(/\s+/).filter(Boolean).length
+    };
   }
 }
 

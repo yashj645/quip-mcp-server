@@ -24,7 +24,8 @@ import {
   TextContent,
   ImageContent,
   EmbeddedResource,
-  getQuipTools, 
+  getQuipTools,
+  handleQuipReadDocument,
   handleQuipReadSpreadsheet
 } from './tools';
 
@@ -449,7 +450,14 @@ export async function main(): Promise<void> {
       logger.info(`Handling tools/call request for tool: ${request.params.name}`);
       
       try {
-        if (request.params.name === "quip_read_spreadsheet") {
+        if (request.params.name === "quip_read_document") {
+          return {
+            content: await handleQuipReadDocument(
+              request.params.arguments || {},
+              options.mock
+            )
+          };
+        } else if (request.params.name === "quip_read_spreadsheet") {
           return {
             content: await handleQuipReadSpreadsheet(
               request.params.arguments || {},

@@ -41,6 +41,20 @@ import { truncateCSVContent } from './storage';
 export function getQuipTools(): Tool[] {
   return [
     {
+      name: "quip_read_document",
+      description: "Read the text content of a regular Quip document (non-spreadsheet) by its thread ID. Returns the document title, type, and extracted plain text content.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          threadId: {
+            type: "string",
+            description: "The Quip document thread ID"
+          }
+        },
+        required: ["threadId"]
+      }
+    },
+    {
       name: "quip_read_spreadsheet",
       description: "Read the content of a Quip spreadsheet by its thread ID. Returns a JSON object containing truncated CSV content (limited to 10KB) and metadata. For large spreadsheets, the returned content may be truncated. To access the complete CSV data, use the resource interface with URI format: 'quip://{threadId}?sheet={sheetName}' for local storage, 'file:///<storage path>/{threadId}-{sheetName}.csv' for file protocol, 's3://{bucket}/{prefix}{threadId}-{sheetName}.csv' for S3 storage identification, or HTTPS URLs (presigned S3 URLs) for direct access to S3 resources when S3 storage is used. The returned data structure includes: { 'csv_content': string (possibly truncated CSV data), 'metadata': { 'rows': number, 'columns': number, 'is_truncated': boolean, 'resource_uri': string } }",
       inputSchema: {
@@ -59,6 +73,59 @@ export function getQuipTools(): Tool[] {
       }
     }
   ];
+}
+
+/**
+ * Handle the quip_read_document tool
+ *
+ * @param args Tool arguments
+ * @param useMock Whether to use mock client
+ * @returns Promise resolving to array of content objects
+ */
+export async function handleQuipReadDocument(
+  args: Record<string, any>,
+  useMock: boolean = false
+): Promise<(TextContent | ImageContent | EmbeddedResource)[]> {
+  const threadId = args.threadId;
+
+  if (!threadId) {
+    throw new InvalidParamsError("threadId is required");
+  }
+
+  logger.info(`Reading document from thread ${threadId}`, { mock: useMock });
+
+  let client;
+
+  if (useMock) {
+    logger.info('Using mock Quip client');
+    client = new MockQuipClient();
+  } else {
+    const quipToken = process.env.QUIP_TOKEN;
+    const quipBaseUrl = process.env.QUIP_BASE_URL || "https://platform.quip.com";
+
+    if (!quipToken) {
+      throw new QuipApiError("QUIP_TOKEN environment variable is not set");
+    }
+
+    client = new QuipClient(quipToken, quipBaseUrl);
+  }
+
+  try {
+    const result = await client.getDocumentText(threadId);
+
+    logger.info(`Returning document content for thread ${threadId}`, {
+      title: result.title,
+      word_count: result.word_count
+    });
+
+    return [{ type: "text", text: JSON.stringify({ thread_id: threadId, ...result }) }];
+  } catch (error) {
+    if (error instanceof QuipApiError) {
+      throw error;
+    }
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new QuipApiError(`Error reading document: ${errorMessage}`);
+  }
 }
 
 /**

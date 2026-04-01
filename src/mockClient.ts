@@ -6,6 +6,16 @@ import * as path from 'path';
 import { logger } from './logger';
 
 /**
+ * Mock data for a document thread
+ */
+interface MockDocument {
+  threadId: string;
+  title: string;
+  type: string;
+  text: string;
+}
+
+/**
  * Mock data for a spreadsheet thread
  */
 interface MockSpreadsheet {
@@ -40,6 +50,7 @@ interface MockSpreadsheet {
  */
 export class MockQuipClient {
   private mockData: Map<string, MockSpreadsheet> = new Map();
+  private mockDocuments: Map<string, MockDocument> = new Map();
   
   /**
    * Initialize the mock client with sample data
@@ -74,6 +85,21 @@ export class MockQuipClient {
       ]
     });
     
+    // Add sample documents
+    this.addMockDocument({
+      threadId: 'doc1',
+      title: 'Sample Document',
+      type: 'document',
+      text: 'This is a sample Quip document. It contains multiple paragraphs of text. You can use this to test reading normal Quip documents via the MCP server.'
+    });
+
+    this.addMockDocument({
+      threadId: 'doc2',
+      title: 'Meeting Notes',
+      type: 'document',
+      text: 'Meeting Notes - Q1 Planning. Attendees: Alice, Bob, Charlie. Action items: Review roadmap, update timelines, schedule follow-up.'
+    });
+
     // Add a large mock spreadsheet
     const largeSheet = this.generateLargeSheet(100, 10);
     this.addMockSpreadsheet({
@@ -93,6 +119,11 @@ export class MockQuipClient {
    * 
    * @param spreadsheet Mock spreadsheet data
    */
+  addMockDocument(doc: MockDocument): void {
+    this.mockDocuments.set(doc.threadId, doc);
+    logger.debug(`Added mock document: ${doc.threadId}`, { title: doc.title });
+  }
+
   addMockSpreadsheet(spreadsheet: MockSpreadsheet): void {
     this.mockData.set(spreadsheet.threadId, spreadsheet);
     logger.debug(`Added mock spreadsheet: ${spreadsheet.threadId}`, { title: spreadsheet.title });
@@ -188,8 +219,31 @@ export class MockQuipClient {
   }
   
   /**
+   * Read text content from a mock document thread
+   *
+   * @param threadId ID of the thread to read
+   * @returns Promise resolving to document content
+   */
+  async getDocumentText(threadId: string): Promise<{ title: string; type: string; text_content: string; word_count: number }> {
+    logger.info(`Getting mock document text for thread: ${threadId}`);
+
+    const doc = this.mockDocuments.get(threadId);
+    if (!doc) {
+      logger.error(`Mock document not found: ${threadId}`);
+      throw new Error(`Thread not found: ${threadId}`);
+    }
+
+    return {
+      title: doc.title,
+      type: doc.type,
+      text_content: doc.text,
+      word_count: doc.text.split(/\s+/).filter(Boolean).length
+    };
+  }
+
+  /**
    * Check if a thread is a spreadsheet
-   * 
+   *
    * @param threadId ID of the thread to check
    * @returns Promise resolving to true if the thread is a spreadsheet, false otherwise
    */

@@ -1,7 +1,7 @@
 {
-  "name": "@zxkane/quip-mcp-server",
+  "name": "@yashj645/quip-mcp-server",
   "version": "1.0.0",
-  "description": "MCP server for interacting with Quip spreadsheets",
+  "description": "MCP server for reading Quip documents and spreadsheets",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -69,7 +69,7 @@
     "spreadsheet",
     "csv"
   ],
-  "author": "",
+  "author": "yashj645",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

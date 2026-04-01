@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "quip": {
+      "command": "node",
+      "args": [
+        "/Users/yashjain/Documents/quip-mcp-server/dist/index.js",
+        "--storage-path",
+        "/Users/yashjain/Documents/quip-mcp-server/storage",
+        "--file-protocol"
+      ],
+      "env": {
+        "QUIP_TOKEN": "VEFRQU1BVzBzR0c=|1806551120|SSCukFMtjh2cpUNwsRzQtx7e6u3aBmkvLgPgJMxultY="
+      }
+    }
+  }
+}
